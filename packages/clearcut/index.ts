@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import { LogHandler } from "@firebase/logger";
-import queue from "./src/queue";
+import { LogHandler } from '@firebase/logger';
+import queue from './src/queue';
 
 export function clearcutHandler(logSource: string, serializer): LogHandler {
   return (type, level, ...args) => {
     const message = serializer(args);
     queue({
-      logSource, 
+      logSource,
       message,
       eventTime: Date.now()
     });

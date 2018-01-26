@@ -18,10 +18,10 @@ const CACHE_KEY = '@firebase/clearcut-cache';
 const PROCESS_CACHE_OFFSET_KEY = '@firebase/clearcut-time-cache';
 
 export interface batchEvt {
-  logSource: string,
-  message: string,
-  eventTime: number
-};
+  logSource: string;
+  message: string;
+  eventTime: number;
+}
 
 const validEvent = evt => evt.logSource && evt.message && evt.eventTime;
 
@@ -37,11 +37,11 @@ let queue: batchEvt[] = (cache => {
   if (!cache) return [];
 
   /**
-   * Because this can fail, 
+   * Because this can fail,
    */
   try {
     let parsed = JSON.parse(cache);
-  
+
     /**
      * Validate parsed is a proper cache, return an empty cache otherwise
      */
@@ -56,10 +56,9 @@ let queue: batchEvt[] = (cache => {
      * If cache is valid, pass the cache along
      */
     return parsed;
-  } catch(err) {
+  } catch (err) {
     return [];
   }
-
 })(localStorage.getItem(CACHE_KEY));
 
 const PROCESS_CACHE_OFFSET = (cache => {
@@ -74,7 +73,7 @@ const PROCESS_CACHE_OFFSET = (cache => {
    */
   const time = new Date(cache).getTime();
   if (time <= now) return 0;
-  
+
   return time - now;
 })(localStorage.getItem(PROCESS_CACHE_OFFSET_KEY));
 
@@ -109,8 +108,8 @@ const processQueue = (timeOffset: number) => {
     /**
      * Break the log queue into a map of logSources and associated events
      */
-    const mapLogSourceToEvents: { 
-      [logSource: string]: batchEvt[] 
+    const mapLogSourceToEvents: {
+      [logSource: string]: batchEvt[];
     } = queue.reduce((map, evt) => {
       if (!map[evt.logSource]) map[evt.logSource] = [];
       map[evt.logSource] = [...map[evt.logSource], evt];
@@ -120,69 +119,76 @@ const processQueue = (timeOffset: number) => {
     /**
      * Map each logSource onto a request to submit those types of events
      */
-    const requests = Object.keys(mapLogSourceToEvents)
-      .map(logSource => {
-        const chunk = mapLogSourceToEvents[logSource];
+    const requests = Object.keys(mapLogSourceToEvents).map(logSource => {
+      const chunk = mapLogSourceToEvents[logSource];
 
-        /**
-         * We will pass the JSON serialized event to the backend
-         */
-        const log_event = chunk.map(evt => ({
-          source_extension_json: JSON.stringify(evt.message),
-          event_time_ms: evt.eventTime
-        }));
-        const log_source = chunk.reduce((source, evt) => source || evt.logSource, null);
+      /**
+       * We will pass the JSON serialized event to the backend
+       */
+      const log_event = chunk.map(evt => ({
+        source_extension_json: JSON.stringify(evt.message),
+        event_time_ms: evt.eventTime
+      }));
+      const log_source = chunk.reduce(
+        (source, evt) => source || evt.logSource,
+        null
+      );
 
-        const data = Object.assign({}, baseData, {
-          log_source,
-          log_event
-        });
-
-        /**
-         * POST the logs to clearcut
-         */
-        return fetch("https://jmt17.google.com/log?format=json_proto", {
-          method: "POST",
-          body: JSON.stringify(data)
-        })
-        .then(res => res.json())
-        /**
-         * If the request fails for some reason, add the events that were attempted
-         * back to the primary queue to retry later
-         */
-        .catch(err => {
-          queue = [
-            ...chunk,
-            ...queue
-          ];
-          throw err;
-        });
+      const data = Object.assign({}, baseData, {
+        log_source,
+        log_event
       });
 
-    
+      /**
+       * POST the logs to clearcut
+       */
+      return (
+        fetch('https://jmt17.google.com/log?format=json_proto', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        })
+          .then(res => res.json())
+          /**
+           * If the request fails for some reason, add the events that were attempted
+           * back to the primary queue to retry later
+           */
+          .catch(err => {
+            queue = [...chunk, ...queue];
+            throw err;
+          })
+      );
+    });
+
     /**
      * If succesful then we can register the next POST attempt
      */
     Promise.all(requests)
-    /**
-     * We will receive multiple next request offsets, defer for the longest requested period
-     */
-    .then(resArray => {
-      return resArray.reduce((offset, res) => Math.max(offset, parseInt(res.next_request_wait_millis, 10)), 0);
-    })
-    /**
-     * Cache the requested offset time and schedule the next process
-     */
-    .then(requestOffset => {
-      localStorage.setItem(PROCESS_CACHE_OFFSET_KEY, Date.now() + requestOffset);
-      processQueue(requestOffset);
-    })
-    /**
-     * If we failed then we retry in 5 seconds
-     */
-    .catch(err => {
-      processQueue(5000);
-    });
+      /**
+       * We will receive multiple next request offsets, defer for the longest requested period
+       */
+      .then(resArray => {
+        return resArray.reduce(
+          (offset, res) =>
+            Math.max(offset, parseInt(res.next_request_wait_millis, 10)),
+          0
+        );
+      })
+      /**
+       * Cache the requested offset time and schedule the next process
+       */
+      .then(requestOffset => {
+        localStorage.setItem(
+          PROCESS_CACHE_OFFSET_KEY,
+          Date.now() + requestOffset
+        );
+        processQueue(requestOffset);
+      })
+      /**
+       * If we failed then we retry in 5 seconds
+       */
+      .catch(err => {
+        processQueue(5000);
+      });
   }, timeOffset);
 };
 
@@ -192,13 +198,11 @@ export default function(evt: batchEvt) {
   /**
    * Validate event
    */
-  if (!validEvent(evt)) throw new Error('Attempted to queue invalid clearcut event');
+  if (!validEvent(evt))
+    throw new Error('Attempted to queue invalid clearcut event');
 
   /**
    * Capture event in the queue
    */
-  queue = [
-    ...queue,
-    evt
-  ];
+  queue = [...queue, evt];
 }
